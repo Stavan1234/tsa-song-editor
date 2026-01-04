@@ -3,12 +3,15 @@
 import { ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
+
 type NavItem = {
   label: string;
   path: string;
-  icon: JSX.Element;
+  icon: ReactNode;
   description?: string;
 };
+
+
 
 const NAV_ITEMS: NavItem[] = [
   {
