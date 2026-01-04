@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc, deleteDoc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useParams, useRouter } from "next/navigation";
 
@@ -12,45 +12,51 @@ type Song = {
   category: string;
   lyrics: string;
   verified: boolean;
+  engRef?: string;
+  tuneRef?: string;
 };
 
 export default function SongEditorPage() {
-  const { id } = useParams<{ id: string }>();
+  const { id } = useParams<{ id: string }>(); // This is the current ID (hymn number)
   const router = useRouter();
 
-  const [song, setSong] = useState<Song | null>(null);
-  const [lyrics, setLyrics] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [status, setStatus] = useState<{
-    type: "success" | "error" | "info" | null;
-    message: string;
-  }>({ type: null, message: "" });
+  const [originalSong, setOriginalSong] = useState<Song | null>(null);
+  const [formData, setFormData] = useState({
+    hymnNumber: "", // Keep as string for input handling
+    titleMarathi: "",
+    titleEnglish: "",
+    category: "",
+    lyrics: "",
+  });
+  
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<{ type: "success" | "error" | null; message: string }>({ type: null, message: "" });
 
   useEffect(() => {
     async function loadSong() {
-      setLoading(true);
       try {
         const ref = doc(db, "songs", id);
         const snap = await getDoc(ref);
 
         if (!snap.exists()) {
-          setStatus({
-            type: "error",
-            message: "Song not found",
-          });
+          setStatus({ type: "error", message: "Song not found" });
           setTimeout(() => router.push("/admin/songs"), 2000);
           return;
         }
 
         const data = snap.data() as Song;
-        setSong(data);
-        setLyrics(data.lyrics);
-      } catch (error) {
-        setStatus({
-          type: "error",
-          message: "Failed to load song",
+        setOriginalSong(data);
+        setFormData({
+          hymnNumber: data.hymnNumber.toString(),
+          titleMarathi: data.titleMarathi || "",
+          titleEnglish: data.titleEnglish || "",
+          category: data.category || "",
+          lyrics: data.lyrics || "",
         });
+      } catch (error) {
+        console.error(error);
+        setStatus({ type: "error", message: "Failed to load song" });
       } finally {
         setLoading(false);
       }
@@ -60,12 +66,8 @@ export default function SongEditorPage() {
   }, [id, router]);
 
   async function save() {
-    if (song?.verified) {
-      setStatus({
-        type: "error",
-        message: "This song is verified and cannot be edited.",
-      });
-      setTimeout(() => setStatus({ type: null, message: "" }), 3000);
+    if (originalSong?.verified) {
+      alert("Verified songs cannot be edited.");
       return;
     }
 
@@ -73,403 +75,196 @@ export default function SongEditorPage() {
     setStatus({ type: null, message: "" });
 
     try {
-      await updateDoc(doc(db, "songs", id), {
-        lyrics,
-        lastEditedAt: new Date(),
-      });
+      const newHymnNumber = Number(formData.hymnNumber);
+      const oldHymnNumber = Number(id);
 
-      setStatus({
-        type: "success",
-        message: "Changes saved successfully",
-      });
+      // Common data to save
+      const dataToSave = {
+        titleMarathi: formData.titleMarathi,
+        titleEnglish: formData.titleEnglish,
+        category: formData.category,
+        lyrics: formData.lyrics,
+        hymnNumber: newHymnNumber,
+        lastEditedAt: new Date(),
+        // Preserve existing fields that aren't in the form
+        verified: originalSong?.verified || false,
+        engRef: originalSong?.engRef || "",
+        tuneRef: originalSong?.tuneRef || "",
+      };
+
+      // CASE 1: Hymn Number Changed (Migration required)
+      if (newHymnNumber !== oldHymnNumber) {
+        const newDocRef = doc(db, "songs", formData.hymnNumber);
+        const newDocSnap = await getDoc(newDocRef);
+
+        if (newDocSnap.exists()) {
+          setStatus({ type: "error", message: `Song #${newHymnNumber} already exists! Choose a different number.` });
+          setSaving(false);
+          return;
+        }
+
+        // 1. Create new document
+        await setDoc(newDocRef, dataToSave);
+        // 2. Delete old document
+        await deleteDoc(doc(db, "songs", id));
+        
+        setStatus({ type: "success", message: "Song moved to new number. Redirecting..." });
+        setTimeout(() => router.push(`/admin/songs/${newHymnNumber}`), 1500);
+      } 
+      // CASE 2: Same Hymn Number (Simple Update)
+      else {
+        await updateDoc(doc(db, "songs", id), dataToSave);
+        setOriginalSong({ ...originalSong!, ...dataToSave }); // Update local state
+        setStatus({ type: "success", message: "Changes saved successfully" });
+      }
+
     } catch (error) {
-      setStatus({
-        type: "error",
-        message: "Failed to save changes. Please try again.",
-      });
+      console.error(error);
+      setStatus({ type: "error", message: "Failed to save changes." });
     } finally {
       setSaving(false);
     }
   }
 
-  async function toggleVerification() {
-    if (!song) return;
+  async function handleDelete() {
+    if (!confirm(`Are you sure you want to PERMANENTLY delete Song #${id}?`)) return;
 
-    const msg = song.verified
-      ? "Unverify this song? Editing will be enabled."
-      : "Mark this song as VERIFIED? Editing will be locked.";
-
-    if (!confirm(msg)) return;
-
+    setSaving(true);
     try {
-      await updateDoc(doc(db, "songs", id), {
-        verified: !song.verified,
-        lastEditedAt: new Date(),
-      });
-
-      setSong({ ...song, verified: !song.verified });
-      setStatus({
-        type: "success",
-        message: song.verified
-          ? "Song unverified successfully"
-          : "Song marked as verified",
-      });
-      setTimeout(() => setStatus({ type: null, message: "" }), 3000);
+      await deleteDoc(doc(db, "songs", id));
+      router.push("/admin/songs");
     } catch (error) {
-      setStatus({
-        type: "error",
-        message: "Failed to update verification status",
-      });
+      setStatus({ type: "error", message: "Failed to delete song" });
+      setSaving(false);
     }
   }
 
-  const characterCount = lyrics.length;
-  const wordCount = lyrics.trim() ? lyrics.trim().split(/\s+/).length : 0;
-  const hasChanges = song && lyrics !== song.lyrics;
-
-  if (loading) {
-    return (
-      <main className="p-8 max-w-5xl">
-        <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-12 text-center">
-          <svg
-            className="animate-spin h-8 w-8 text-blue-600 mx-auto mb-4"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <circle
-              className="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              strokeWidth="4"
-            ></circle>
-            <path
-              className="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            ></path>
-          </svg>
-          <p className="text-gray-600">Loading song...</p>
-        </div>
-      </main>
-    );
-  }
-
-  if (!song) {
-    return (
-      <main className="p-8 max-w-5xl">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-          <p className="text-red-800">{status.message || "Song not found"}</p>
-        </div>
-      </main>
-    );
-  }
+  if (loading) return <div className="p-10 text-center text-gray-500">Loading song editor...</div>;
+  if (!originalSong) return null;
 
   return (
-    <main className="p-8 max-w-5xl">
-      {/* Back Button */}
-      <button
-        onClick={() => router.push("/admin/songs")}
-        className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 mb-6 transition-colors"
-      >
-        <svg
-          className="w-4 h-4"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M15 19l-7-7 7-7"
-          />
-        </svg>
-        Back to Songs List
-      </button>
-
-      {/* Header Card */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6 shadow-sm">
-        <div className="flex items-start justify-between mb-4">
-          <div className="flex-1">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-14 h-14 bg-blue-100 rounded-lg flex items-center justify-center">
-                <span className="text-blue-700 font-bold text-xl">
-                  {song.hymnNumber}
-                </span>
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">
-                  {song.titleMarathi}
-                </h1>
-                {song.titleEnglish && (
-                  <p className="text-sm text-gray-600 mt-1">
-                    {song.titleEnglish}
-                  </p>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-2 mt-3">
-              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                {song.category}
-              </span>
-              {song.verified && (
-                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">
-                  <svg
-                    className="w-3 h-3"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                  Verified & Locked
-                </span>
-              )}
-            </div>
-          </div>
+    <main className="p-6 md:p-8 max-w-6xl mx-auto pb-20">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+        <div>
+          <button onClick={() => router.push("/admin/songs")} className="text-sm text-gray-500 hover:text-blue-600 mb-2 flex items-center gap-1">
+            ← Back to List
+          </button>
+          <h1 className="text-2xl font-bold text-gray-900">
+            Edit Song #{id}
+          </h1>
         </div>
+        
+        {!originalSong.verified && (
+          <button
+            onClick={handleDelete}
+            className="px-4 py-2 text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors text-sm font-medium"
+          >
+            Delete Song
+          </button>
+        )}
+      </div>
 
-        {/* Verification Controls */}
-        <div className="border-t border-gray-200 pt-4 mt-4">
-          <div className="flex items-center justify-between">
+      {/* Main Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        {/* Left Column: Metadata Inputs */}
+        <div className="lg:col-span-1 space-y-6">
+          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm space-y-4">
+            <h2 className="font-semibold text-gray-900 mb-4">Song Details</h2>
+            
             <div>
-              <h3 className="text-sm font-semibold text-gray-700 mb-1">
-                Verification Status
-              </h3>
-              <p className="text-xs text-gray-500">
-                {song.verified
-                  ? "This song is verified and locked from editing"
-                  : "This song is not verified and can be edited"}
-              </p>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Hymn Number</label>
+              <input
+                type="number"
+                value={formData.hymnNumber}
+                onChange={(e) => setFormData({ ...formData, hymnNumber: e.target.value })}
+                disabled={originalSong.verified}
+                className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+              <p className="text-xs text-gray-500 mt-1">Changing this moves the song to a new ID.</p>
             </div>
-            <button
-              onClick={toggleVerification}
-              className={`px-5 py-2.5 rounded-lg text-white font-medium transition-all duration-200 ${
-                song.verified
-                  ? "bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 shadow-md hover:shadow-lg"
-                  : "bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 shadow-md hover:shadow-lg"
-              }`}
-            >
-              {song.verified ? (
-                <span className="flex items-center gap-2">
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"
-                    />
-                  </svg>
-                  Unverify (Unlock)
-                </span>
-              ) : (
-                <span className="flex items-center gap-2">
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-                    />
-                  </svg>
-                  Mark as Verified
-                </span>
-              )}
-            </button>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Marathi Title</label>
+              <input
+                type="text"
+                value={formData.titleMarathi}
+                onChange={(e) => setFormData({ ...formData, titleMarathi: e.target.value })}
+                disabled={originalSong.verified}
+                className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">English Title</label>
+              <input
+                type="text"
+                value={formData.titleEnglish}
+                onChange={(e) => setFormData({ ...formData, titleEnglish: e.target.value })}
+                disabled={originalSong.verified}
+                className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+              <input
+                type="text"
+                value={formData.category}
+                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                disabled={originalSong.verified}
+                className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            {originalSong.verified && (
+              <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-xs text-yellow-800">
+                🔒 This song is verified. Unverify it to edit details.
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right Column: Lyrics Editor */}
+        <div className="lg:col-span-2">
+          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm h-full flex flex-col">
+            <h2 className="font-semibold text-gray-900 mb-4">Lyrics</h2>
+            <textarea
+              value={formData.lyrics}
+              onChange={(e) => setFormData({ ...formData, lyrics: e.target.value })}
+              disabled={originalSong.verified}
+              placeholder="Enter lyrics here..."
+              className="flex-1 w-full min-h-[400px] p-4 border border-gray-300 rounded-lg font-mono text-base leading-relaxed focus:ring-2 focus:ring-blue-500 resize-y"
+            />
           </div>
         </div>
       </div>
 
-      {/* Lyrics Editor Card */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gray-900">Lyrics</h2>
-          {song.verified && (
-            <div className="flex items-center gap-2 px-3 py-1 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <svg
-                className="w-4 h-4 text-yellow-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-                />
-              </svg>
-              <span className="text-xs font-medium text-yellow-800">
-                Editing Locked
-              </span>
-            </div>
-          )}
-        </div>
-
-        <textarea
-          value={lyrics}
-          onChange={(e) => setLyrics(e.target.value)}
-          disabled={song.verified}
-          placeholder="Enter song lyrics here..."
-          className={`w-full h-[500px] border-2 rounded-lg p-4 font-mono text-base leading-relaxed resize-none focus:outline-none focus:ring-2 transition-all ${
-            song.verified
-              ? "bg-gray-50 border-gray-200 cursor-not-allowed text-gray-900"
-              : "bg-white border-gray-300 focus:border-blue-500 focus:ring-blue-200 text-gray-900"
-          }`}
-        />
-
-        <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200">
-          <div className="flex items-center gap-4 text-xs text-gray-500">
-            <span>
-              <strong className="text-gray-700">{characterCount}</strong> characters
-            </span>
-            <span>
-              <strong className="text-gray-700">{wordCount}</strong> words
-            </span>
-          </div>
-          {hasChanges && !song.verified && (
-            <span className="text-xs text-orange-600 font-medium flex items-center gap-1">
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                />
-              </svg>
-              Unsaved changes
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Action Bar */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={save}
-              disabled={saving || song.verified || !hasChanges}
-              className={`
-                px-6 py-3 rounded-lg font-semibold text-base
-                transition-all duration-200 transform
-                disabled:cursor-not-allowed disabled:transform-none
-                ${
-                  saving || song.verified || !hasChanges
-                    ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                    : "bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-md hover:shadow-lg hover:scale-105 active:scale-100"
-                }
-              `}
-            >
-              {saving ? (
-                <span className="flex items-center gap-2">
-                  <svg
-                    className="animate-spin h-5 w-5"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    ></circle>
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
-                  </svg>
-                  Saving...
+      {/* Floating Action Bar */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-40">
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-2">
+             {status.message && (
+                <span className={`text-sm font-medium px-3 py-1 rounded-full ${
+                  status.type === 'error' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+                }`}>
+                  {status.message}
                 </span>
-              ) : (
-                <span className="flex items-center gap-2">
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 13l4 4L19 7"
-                    />
-                  </svg>
-                  Save Changes
-                </span>
-              )}
-            </button>
+             )}
           </div>
-
-          {/* Status Message */}
-          {status.type && (
-            <div
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
-                status.type === "success"
-                  ? "bg-green-50 text-green-800 border border-green-200"
-                  : status.type === "error"
-                  ? "bg-red-50 text-red-800 border border-red-200"
-                  : "bg-blue-50 text-blue-800 border border-blue-200"
-              }`}
-            >
-              {status.type === "success" ? (
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-              ) : (
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-              )}
-              <span className="text-sm font-medium">{status.message}</span>
-            </div>
-          )}
+          <button
+            onClick={save}
+            disabled={saving || originalSong.verified}
+            className={`
+              px-6 py-2.5 rounded-lg font-semibold text-white transition-all
+              ${saving || originalSong.verified 
+                ? "bg-gray-400 cursor-not-allowed" 
+                : "bg-blue-600 hover:bg-blue-700 hover:shadow-lg transform hover:-translate-y-0.5"}
+            `}
+          >
+            {saving ? "Saving..." : "Save Changes"}
+          </button>
         </div>
       </div>
     </main>
