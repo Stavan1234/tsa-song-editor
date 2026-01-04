@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { use } from "react";
 
 export default function Home() {
   const features = [
