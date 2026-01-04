@@ -51,9 +51,7 @@ Seamlessly sync data between this editor and the Android application.
 
 | Export Data | Import Data |
 | :---: | :---: |
-| <img width="1092" height="753" alt="editor 6" src="https://github.com/user-attachments/assets/de328802-6b7c-46cb-8495-f6a7d5e389f0" />
- | <img width="1092" height="795" alt="editor 5" src="https://github.com/user-attachments/assets/37aa23df-9759-4502-9d3d-360a77e41129" />
- |
+| <img width="1092" height="753" alt="editor 6" src="https://github.com/user-attachments/assets/de328802-6b7c-46cb-8495-f6a7d5e389f0" />| <img width="1092" height="795" alt="editor 5" src="https://github.com/user-attachments/assets/37aa23df-9759-4502-9d3d-360a77e41129" />|
 
 ---
 
