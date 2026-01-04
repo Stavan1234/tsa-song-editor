@@ -76,7 +76,7 @@ export default function NewSongPage() {
           <input
             required
             type="number"
-            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500"
             value={formData.hymnNumber}
             onChange={e => setFormData({...formData, hymnNumber: e.target.value})}
           />
@@ -88,7 +88,7 @@ export default function NewSongPage() {
             <input
               required
               type="text"
-              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="w-full p-3 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500"
               value={formData.titleMarathi}
               onChange={e => setFormData({...formData, titleMarathi: e.target.value})}
             />
@@ -97,7 +97,7 @@ export default function NewSongPage() {
             <label className="block text-sm font-semibold text-gray-700 mb-1">English Title</label>
             <input
               type="text"
-              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="w-full p-3 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500"
               value={formData.titleEnglish}
               onChange={e => setFormData({...formData, titleEnglish: e.target.value})}
             />
@@ -108,7 +108,7 @@ export default function NewSongPage() {
           <label className="block text-sm font-semibold text-gray-700 mb-1">Category</label>
           <input
             type="text"
-            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            className="w-full p-3 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500"
             value={formData.category}
             onChange={e => setFormData({...formData, category: e.target.value})}
           />
@@ -118,7 +118,7 @@ export default function NewSongPage() {
           <label className="block text-sm font-semibold text-gray-700 mb-1">Lyrics</label>
           <textarea
             required
-            className="w-full p-3 border border-gray-300 rounded-lg h-40 font-mono text-sm focus:ring-2 focus:ring-blue-500"
+            className="w-full p-3 border border-gray-300 text-gray-900 rounded-lg h-40 font-mono text-sm focus:ring-2 focus:ring-blue-500"
             value={formData.lyrics}
             onChange={e => setFormData({...formData, lyrics: e.target.value})}
           />

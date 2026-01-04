@@ -178,7 +178,7 @@ export default function SongListPage() {
             placeholder="Search by hymn number, title, or category…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="block w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"
+            className="block w-full pl-12 pr-4 py-3 border text-gray-900 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"
           />
           {search && (
             <button
