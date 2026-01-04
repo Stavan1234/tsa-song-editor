@@ -125,6 +125,36 @@ export default function SongEditorPage() {
     }
   }
 
+  async function toggleVerification() {
+    if (!originalSong) return;
+
+    const msg = originalSong.verified
+      ? "Unverify this song? Editing will be enabled."
+      : "Mark this song as VERIFIED? Editing will be locked.";
+
+    if (!confirm(msg)) return;
+
+    try {
+      await updateDoc(doc(db, "songs", id), {
+        verified: !originalSong.verified,
+        lastEditedAt: new Date(),
+      });
+
+      setOriginalSong({ ...originalSong, verified: !originalSong.verified });
+      setStatus({
+        type: "success",
+        message: originalSong.verified
+          ? "Song unverified successfully"
+          : "Song marked as verified",
+      });
+    } catch (error) {
+      setStatus({
+        type: "error",
+        message: "Failed to update verification status",
+      });
+    }
+  }
+
   async function handleDelete() {
     if (!confirm(`Are you sure you want to DELETE Song #${id}? This cannot be undone.`)) return;
 
@@ -152,19 +182,41 @@ export default function SongEditorPage() {
           >
             ← Back to Songs
           </button>
-          <h1 className="text-2xl font-bold text-gray-900">
-            Edit Song #{id}
-          </h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-gray-900">
+              Edit Song #{id}
+            </h1>
+            {originalSong.verified && (
+                <span className="px-2 py-1 bg-green-100 text-green-800 text-xs font-bold rounded-full border border-green-200">
+                  VERIFIED
+                </span>
+            )}
+          </div>
         </div>
         
-        {!originalSong.verified && (
-          <button
-            onClick={handleDelete}
-            className="px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg text-sm font-medium hover:bg-red-100"
-          >
-            Delete Song
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+            {/* Toggle Verification Button */}
+            <button
+              onClick={toggleVerification}
+              className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                originalSong.verified
+                  ? "bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100"
+                  : "bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
+              }`}
+            >
+              {originalSong.verified ? "Unlock (Unverify)" : "Mark Verified (Lock)"}
+            </button>
+
+            {/* Delete Button (Only if not verified) */}
+            {!originalSong.verified && (
+              <button
+                onClick={handleDelete}
+                className="px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg text-sm font-medium hover:bg-red-100"
+              >
+                Delete Song
+              </button>
+            )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -180,7 +232,7 @@ export default function SongEditorPage() {
                 value={formData.hymnNumber}
                 onChange={(e) => setFormData({...formData, hymnNumber: e.target.value})}
                 disabled={originalSong.verified}
-                className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 text-gray-900"
               />
             </div>
             <div>
@@ -190,7 +242,7 @@ export default function SongEditorPage() {
                 value={formData.titleMarathi}
                 onChange={(e) => setFormData({...formData, titleMarathi: e.target.value})}
                 disabled={originalSong.verified}
-                className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 text-gray-900"
               />
             </div>
             <div>
@@ -200,7 +252,7 @@ export default function SongEditorPage() {
                 value={formData.titleEnglish}
                 onChange={(e) => setFormData({...formData, titleEnglish: e.target.value})}
                 disabled={originalSong.verified}
-                className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 text-gray-900"
               />
             </div>
             <div>
@@ -210,13 +262,14 @@ export default function SongEditorPage() {
                 value={formData.category}
                 onChange={(e) => setFormData({...formData, category: e.target.value})}
                 disabled={originalSong.verified}
-                className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 text-gray-900"
               />
             </div>
 
             {originalSong.verified && (
-              <div className="bg-yellow-50 text-yellow-800 p-3 rounded text-xs border border-yellow-200">
-                Locked: Verified song
+              <div className="bg-yellow-50 text-yellow-800 p-3 rounded text-xs border border-yellow-200 flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                Editing Locked: Song is verified
               </div>
             )}
           </div>
@@ -230,7 +283,7 @@ export default function SongEditorPage() {
               value={formData.lyrics}
               onChange={(e) => setFormData({...formData, lyrics: e.target.value})}
               disabled={originalSong.verified}
-              className="flex-1 w-full min-h-[400px] p-4 border border-gray-300 rounded-lg font-mono text-base focus:ring-2 focus:ring-blue-500 resize-y"
+              className="flex-1 w-full min-h-[400px] p-4 border border-gray-300 rounded-lg font-mono text-base focus:ring-2 focus:ring-blue-500 resize-y text-gray-900 leading-relaxed"
             />
           </div>
         </div>
@@ -241,7 +294,7 @@ export default function SongEditorPage() {
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div>
             {status.message && (
-              <span className={`text-sm font-medium ${status.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>
+              <span className={`text-sm font-medium px-3 py-1 rounded-full ${status.type === 'error' ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-green-50 text-green-600 border border-green-200'}`}>
                 {status.message}
               </span>
             )}
